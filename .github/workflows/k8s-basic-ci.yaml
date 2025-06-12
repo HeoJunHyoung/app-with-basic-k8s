@@ -1,0 +1,50 @@
+name: Build and Deploy to Kubenetes
+
+on:
+  workflow_dispatch
+  #push:
+    #branches:
+      #- main
+
+jobs:
+  build-and-deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v3
+  
+    - name: Set up JDK 17
+      uses: actions/setup-java@v3
+      with:
+        distribution: temurin
+        java-version: 17
+
+    - name: Build Spring Boot JAR
+      run: ./mvnw clean package -DskipTests
+
+    - name: Log in to Docker Hub
+      uses: docker/login-action@v2
+      with:
+        username: ${{ secrets.DOCKERHUB_USERNAME }}
+        password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+    - name: Build and push Docker image
+      run: |
+        docker buildx build --platform linux/amd64,linux/arm64 -t <hub_id>/<hub_repo>:latest .
+        docker push <hub_id>/<hub_repo>:latest
+
+    - name: Set up kubectl
+      uses: azure/setup-kubectl@v3
+      with:
+        version: latest
+
+    - name: Deploy to Kubernetes cluster
+      env:
+        KUBE_CONFIG_DATA: ${{ secrets.KUBE_CONFIG_DATA }}
+      run: |
+        echo "$KUBE_CONFIG_DATA" | base64 --decode > kubeconfig
+        export KUBECONFIG=$PWD/kubeconfig
+        kubectl apply -f app-k8s-basic-service.yaml
+        kubectl apply -f app-k8s-basic-deployment.yaml
+    
